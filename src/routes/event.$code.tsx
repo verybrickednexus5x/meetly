@@ -148,13 +148,13 @@ function EventPage() {
     const payload = {
       event_id: event.id,
       name: myName.trim().slice(0, 50),
-      availability,
+      availability: availability as unknown as never,
     };
     let error;
     if (myResponse) {
       ({ error } = await supabase
         .from("responses")
-        .update({ availability })
+        .update({ availability: availability as unknown as never })
         .eq("id", myResponse.id));
     } else {
       ({ error } = await supabase.from("responses").insert(payload));
