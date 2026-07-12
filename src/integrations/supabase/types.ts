@@ -14,7 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      events: {
+        Row: {
+          code: string
+          created_at: string
+          creator_name: string
+          creator_token: string
+          date_options: Json
+          day_end_minute: number
+          day_start_minute: number
+          duration_minutes: number
+          id: string
+          title: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          creator_name: string
+          creator_token: string
+          date_options?: Json
+          day_end_minute?: number
+          day_start_minute?: number
+          duration_minutes?: number
+          id?: string
+          title: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          creator_name?: string
+          creator_token?: string
+          date_options?: Json
+          day_end_minute?: number
+          day_start_minute?: number
+          duration_minutes?: number
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      responses: {
+        Row: {
+          availability: Json
+          created_at: string
+          event_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          availability?: Json
+          created_at?: string
+          event_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          availability?: Json
+          created_at?: string
+          event_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "responses_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
