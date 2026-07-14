@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useSuspenseQuery, useQueryClient, queryOptions } from "@tanstack/react-query";
 import { ArrowLeft, CalendarClock, Check, Copy, MapPin, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { AvailabilityBuilder } from "@/components/availability-builder";
 import {
   ALL_DAY_DURATION,
   formatDate,
@@ -20,6 +22,8 @@ type EventRow = {
   id: string;
   code: string;
   title: string;
+  description?: string | null;
+  event_type?: string | null;
   creator_name: string;
   creator_token: string;
   duration_minutes: number;
@@ -119,12 +123,28 @@ function normalizeLocationSuggestions(event: EventRow): string[] {
     .slice(0, 20);
 }
 
+function groupWindowsByDate(windows: Slot[]): { date: string; windows: Slot[] }[] {
+  const byDate = new Map<string, Slot[]>();
+  for (const w of windows) {
+    const list = byDate.get(w.date) ?? [];
+    list.push(w);
+    byDate.set(w.date, list);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, list]) => ({
+      date,
+      windows: [...list].sort((a, b) => a.start - b.start),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function EventPage() {
   const { code } = Route.useParams();
   const upper = code.toUpperCase();
   const { data } = useSuspenseQuery(eventQuery(upper));
   const qc = useQueryClient();
   const { event, responses } = data;
+  const isFixed = event.event_type === "fixed";
 
   const [creatorToken, setCreatorToken] = useState<string | null>(null);
   const [myName, setMyName] = useState("");
@@ -179,21 +199,11 @@ function EventPage() {
     return winner;
   }, [durationOptions, durationVoteCounts, event.duration_minutes]);
 
-  const effectiveDuration =
-    winningDuration === ALL_DAY_DURATION
-      ? event.day_end_minute - event.day_start_minute
-      : winningDuration;
+  const effectiveDuration = winningDuration === ALL_DAY_DURATION ? 0 : winningDuration;
 
   const best = useMemo(
-    () =>
-      computeBestSlot(
-        event.date_options,
-        effectiveDuration,
-        responses,
-        event.day_start_minute,
-        event.day_end_minute,
-      ),
-    [effectiveDuration, event, responses],
+    () => (isFixed ? null : computeBestSlot(responses, effectiveDuration)),
+    [isFixed, effectiveDuration, responses],
   );
 
   async function saveAvailability() {
@@ -201,16 +211,23 @@ function EventPage() {
       toast.error("Enter your name first.");
       return;
     }
+    if (!isFixed && availability.length === 0) {
+      toast.error("Add at least one date and time window you're available.");
+      return;
+    }
     try {
       localStorage.setItem(`meetly:name:${upper}`, myName.trim());
     } catch {
       void 0;
     }
+    const fixedSlot: Slot[] = [
+      { date: event.date_options[0], start: event.day_start_minute, end: event.day_end_minute },
+    ];
     const payload = {
       event_id: event.id,
       name: myName.trim().slice(0, 50),
-      availability: availability as unknown as never,
-      preferred_duration: preferredDuration,
+      availability: (isFixed ? fixedSlot : availability) as unknown as never,
+      preferred_duration: isFixed ? event.duration_minutes : preferredDuration,
       preferred_location: preferredLocation || null,
     };
     let error;
@@ -218,19 +235,19 @@ function EventPage() {
       ({ error } = await supabase
         .from("responses")
         .update({
-          availability: availability as unknown as never,
-          preferred_duration: preferredDuration,
-          preferred_location: preferredLocation || null,
+          availability: payload.availability,
+          preferred_duration: payload.preferred_duration,
+          preferred_location: payload.preferred_location,
         })
         .eq("id", myResponse.id));
     } else {
       ({ error } = await supabase.from("responses").insert(payload));
     }
     if (error) {
-      toast.error("Could not save availability.");
+      toast.error("Could not save. Try again.");
       return;
     }
-    toast.success("Availability saved!");
+    toast.success(isFixed ? "You're on the list!" : "Availability saved!");
     qc.invalidateQueries({ queryKey: ["event", upper] });
   }
 
@@ -314,14 +331,28 @@ function EventPage() {
         <div className="rounded-3xl border bg-card p-6 shadow-sm md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
                 Hosted by {event.creator_name}
+                <Badge variant={isFixed ? "default" : "secondary"} className="normal-case">
+                  {isFixed ? "Fixed date" : "Flexible dates"}
+                </Badge>
               </div>
               <h1 className="mt-1 font-display text-4xl font-bold">{event.title}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Suggested duration: {durationToLabel(winningDuration)} · window{" "}
-                {minutesToLabel(event.day_start_minute)}–{minutesToLabel(event.day_end_minute)}
-              </p>
+              {event.description ? (
+                <p className="mt-2 max-w-xl whitespace-pre-wrap text-sm text-muted-foreground">
+                  {event.description}
+                </p>
+              ) : null}
+              {isFixed ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {formatDate(event.date_options[0])} · {minutesToLabel(event.day_start_minute)}–
+                  {minutesToLabel(event.day_end_minute)}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Suggested duration: {durationToLabel(winningDuration)}
+                </p>
+              )}
             </div>
             <div className="flex flex-col items-end gap-2">
               <div className="rounded-xl border bg-background px-4 py-2 font-mono text-2xl font-bold tracking-widest">
@@ -340,7 +371,7 @@ function EventPage() {
             </div>
           </div>
 
-          {best && responses.length > 0 && (
+          {!isFixed && best && responses.length > 0 && (
             <div className="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
               <div className="flex items-center gap-2 text-primary">
                 <Sparkles className="h-4 w-4" />
@@ -355,9 +386,6 @@ function EventPage() {
                 </div>
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
-                Duration used: {durationToLabel(winningDuration)}
-              </div>
-              <div className="mt-1 text-sm text-muted-foreground">
                 Works for {best.attendees} of {responses.length}{" "}
                 {responses.length === 1 ? "person" : "people"}
               </div>
@@ -368,11 +396,12 @@ function EventPage() {
         <div className="mt-6 grid gap-6 md:grid-cols-[1.5fr_1fr]">
           <section className="rounded-3xl border bg-card p-6 shadow-sm">
             <h2 className="font-display text-2xl font-bold">
-              {isCreator ? "Your availability" : "Add your availability"}
+              {isFixed ? "RSVP" : isCreator ? "Your availability" : "Add your availability"}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tap slots you're free. We'll find a window that fits{" "}
-              {durationToLabel(winningDuration)}.
+              {isFixed
+                ? "Let the host know you're coming."
+                : `Add dates and time windows you're free — as many as you want. We'll find what overlaps.`}
             </p>
 
             <div className="mt-4 space-y-2">
@@ -388,7 +417,7 @@ function EventPage() {
             </div>
 
             <div className="mt-6 space-y-6">
-              {durationOptions.length > 0 && (
+              {!isFixed && durationOptions.length > 0 && (
                 <div className="space-y-2">
                   <Label>Pick your preferred duration</Label>
                   <div className="flex flex-wrap gap-2">
@@ -438,22 +467,20 @@ function EventPage() {
                 </div>
               )}
 
-              {event.date_options.map((iso) => (
-                <DayGrid
-                  key={iso}
-                  date={iso}
-                  dayStart={event.day_start_minute}
-                  dayEnd={event.day_end_minute}
-                  duration={event.duration_minutes}
-                  slots={availability}
-                  onChange={setAvailability}
-                />
-              ))}
+              {!isFixed && (
+                <AvailabilityBuilder windows={availability} onChange={setAvailability} />
+              )}
             </div>
 
             <Button size="lg" className="mt-6 w-full" onClick={saveAvailability}>
               <Check className="mr-2 h-4 w-4" />
-              {myResponse ? "Update my availability" : "Submit availability"}
+              {isFixed
+                ? myResponse
+                  ? "You're on the list"
+                  : "I'll be there"
+                : myResponse
+                  ? "Update my availability"
+                  : "Submit availability"}
             </Button>
           </section>
 
@@ -494,17 +521,36 @@ function EventPage() {
                   </div>
                 )}
 
-                <ul className="space-y-2">
+                <ul className="space-y-3">
                   {responses.map((r) => (
-                    <li key={r.id} className="rounded-xl border bg-background px-3 py-2">
+                    <li key={r.id} className="rounded-xl border bg-background px-3 py-2.5">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{r.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {r.availability.length} slots
-                        </span>
+                        {isFixed ? (
+                          <Badge variant="secondary">Attending</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {r.availability.length} window{r.availability.length === 1 ? "" : "s"}
+                          </span>
+                        )}
                       </div>
+                      {!isFixed && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {groupWindowsByDate(r.availability).map(({ date, windows }) => (
+                            <span
+                              key={date}
+                              className="rounded-full border bg-card px-2 py-0.5 text-[11px] text-muted-foreground"
+                            >
+                              {formatDate(date)}:{" "}
+                              {windows
+                                .map((w) => `${minutesToLabel(w.start)}–${minutesToLabel(w.end)}`)
+                                .join(", ")}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                        {r.preferred_duration != null && (
+                        {!isFixed && r.preferred_duration != null && (
                           <span>Duration: {durationToLabel(r.preferred_duration)}</span>
                         )}
                         {r.preferred_location && (
@@ -527,98 +573,6 @@ function EventPage() {
           </aside>
         </div>
       </main>
-    </div>
-  );
-}
-
-function DayGrid({
-  date,
-  dayStart,
-  dayEnd,
-  duration,
-  slots,
-  onChange,
-}: {
-  date: string;
-  dayStart: number;
-  dayEnd: number;
-  duration: number;
-  slots: Slot[];
-  onChange: (s: Slot[]) => void;
-}) {
-  const step = 30;
-  const cells: number[] = [];
-  for (let t = dayStart; t + step <= dayEnd; t += step) cells.push(t);
-
-  const selectedSet = useMemo(() => {
-    const set = new Set<number>();
-    for (const s of slots) {
-      if (s.date !== date) continue;
-      for (let t = s.start; t < s.end; t += step) set.add(t);
-    }
-    return set;
-  }, [slots, date]);
-
-  const toggle = (t: number) => {
-    const currentlySelected = selectedSet.has(t);
-    // rebuild all slots for this date
-    const others = slots.filter((s) => s.date !== date);
-    const cellState = new Map<number, boolean>();
-    for (const c of cells) cellState.set(c, selectedSet.has(c));
-    cellState.set(t, !currentlySelected);
-    // merge contiguous
-    const merged: Slot[] = [];
-    let start: number | null = null;
-    for (const c of cells) {
-      if (cellState.get(c)) {
-        if (start === null) start = c;
-      } else if (start !== null) {
-        merged.push({ date, start, end: c });
-        start = null;
-      }
-    }
-    if (start !== null) merged.push({ date, start, end: cells[cells.length - 1] + step });
-    onChange([...others, ...merged]);
-  };
-
-  const daySlots = slots.filter((s) => s.date === date);
-  const hasEnoughRoom = daySlots.some((s) => s.end - s.start >= duration);
-
-  return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="font-display text-lg font-bold">{formatDate(date)}</h3>
-        <span
-          className={`text-xs ${
-            hasEnoughRoom ? "text-[color:var(--color-success)]" : "text-muted-foreground"
-          }`}
-        >
-          {daySlots.length === 0
-            ? "not available"
-            : hasEnoughRoom
-              ? "✓ fits duration"
-              : "add more time"}
-        </span>
-      </div>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-        {cells.map((t) => {
-          const on = selectedSet.has(t);
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => toggle(t)}
-              className={`rounded-md border px-2 py-1.5 text-xs transition ${
-                on
-                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                  : "border-border bg-background hover:border-primary/40 hover:bg-muted"
-              }`}
-            >
-              {minutesToLabel(t)}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
