@@ -1,15 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useSuspenseQuery, useQueryClient, queryOptions } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  CalendarClock,
-  Check,
-  Copy,
-  MapPin,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, Copy, MapPin, Sparkles, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
