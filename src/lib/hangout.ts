@@ -28,6 +28,27 @@ export function minutesToLabel(m: number): string {
   return `${h12}:${mm.toString().padStart(2, "0")} ${period}`;
 }
 
+/** Convert a "HH:MM" string (as produced by <input type="time">) to minutes since midnight. */
+export function timeStringToMinutes(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 24 || m < 0 || m >= 60) {
+    return null;
+  }
+  const total = h * 60 + m;
+  return total > 1440 ? null : total;
+}
+
+/** Convert minutes since midnight back to a "HH:MM" string for <input type="time">. */
+export function minutesToTimeString(minutes: number): string {
+  const clamped = Math.max(0, Math.min(1440, minutes));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+}
+
 export function durationToLabel(duration: number): string {
   if (duration === ALL_DAY_DURATION) return "All day";
   if (duration < 60) return `${duration}m`;
@@ -40,6 +61,23 @@ export function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
+/** Merge overlapping or touching intervals (e.g. so one person's own windows aren't double-counted). */
+function mergeIntervals(
+  windows: { start: number; end: number }[],
+): { start: number; end: number }[] {
+  const sorted = [...windows].sort((a, b) => a.start - b.start);
+  const merged: { start: number; end: number }[] = [];
+  for (const w of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && w.start <= last.end) {
+      last.end = Math.max(last.end, w.end);
+    } else {
+      merged.push({ ...w });
+    }
+  }
+  return merged;
+}
+
 export interface ComputedResult {
   date: DateOption;
   start: number;
@@ -48,38 +86,62 @@ export interface ComputedResult {
 }
 
 /**
- * Find the best time slot across all responses that fits duration.
- * For each date, intersect availability intervals across attendees and find
- * the largest window ≥ duration that maximises attendee count.
+ * Find the time window with the most overlapping attendees, across every date
+ * anyone has offered availability for. Attendees can each submit any number of
+ * arbitrary start/end windows (not restricted to a fixed grid or day bounds).
+ * When minDuration is provided, windows that meet it are preferred over
+ * shorter ones with the same attendee count.
  */
 export function computeBestSlot(
-  dateOptions: DateOption[],
-  duration: number,
   responses: { name: string; availability: Slot[] }[],
-  dayStart: number,
-  dayEnd: number,
+  minDuration = 0,
 ): ComputedResult | null {
-  if (responses.length === 0) return null;
+  const withAvailability = responses.filter((r) => r.availability.length > 0);
+  if (withAvailability.length === 0) return null;
 
-  const step = 15;
+  const dates = Array.from(
+    new Set(withAvailability.flatMap((r) => r.availability.map((s) => s.date))),
+  ).sort((a, b) => a.localeCompare(b));
+
   let best: ComputedResult | null = null;
+  let bestMeetsDuration = false;
 
-  for (const date of dateOptions) {
-    // For each 15-min slot, count attendees available for the full duration
-    for (let start = dayStart; start + duration <= dayEnd; start += step) {
-      const end = start + duration;
-      let count = 0;
-      for (const resp of responses) {
-        const covers = resp.availability.some(
-          (a) => a.date === date && a.start <= start && a.end >= end,
-        );
-        if (covers) count++;
+  for (const date of dates) {
+    const perPersonWindows = withAvailability
+      .map((r) => mergeIntervals(r.availability.filter((s) => s.date === date)))
+      .filter((w) => w.length > 0);
+    if (perPersonWindows.length === 0) continue;
+
+    const points: { t: number; delta: number }[] = [];
+    for (const windows of perPersonWindows) {
+      for (const w of windows) {
+        points.push({ t: w.start, delta: 1 });
+        points.push({ t: w.end, delta: -1 });
       }
-      if (count === 0) continue;
-      if (!best || count > best.attendees) {
-        best = { date, start, end, attendees: count };
+    }
+    points.sort((a, b) => a.t - b.t || a.delta - b.delta);
+
+    let count = 0;
+    for (let i = 0; i < points.length; i++) {
+      count += points[i].delta;
+      const t = points[i].t;
+      const next = points[i + 1]?.t;
+      if (next === undefined || next <= t || count <= 0) continue;
+
+      const meetsDuration = next - t >= minDuration;
+      const better =
+        !best ||
+        (meetsDuration && !bestMeetsDuration) ||
+        (meetsDuration === bestMeetsDuration &&
+          (count > best.attendees ||
+            (count === best.attendees && next - t > best.end - best.start)));
+
+      if (better) {
+        best = { date, start: t, end: next, attendees: count };
+        bestMeetsDuration = meetsDuration;
       }
     }
   }
+
   return best;
 }

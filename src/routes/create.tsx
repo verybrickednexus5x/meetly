@@ -5,14 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { AvailabilityBuilder } from "@/components/availability-builder";
 import {
   ALL_DAY_DURATION,
   durationToLabel,
   generateCode,
   generateToken,
-  minutesToLabel,
+  timeStringToMinutes,
+  type Slot,
 } from "@/lib/hangout";
 
 export const Route = createFileRoute("/create")({
@@ -57,14 +61,25 @@ type LocationSearchResult = {
   lon: number;
 };
 
+type EventType = "flexible" | "fixed";
+
 function Create() {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [name, setName] = useState("");
+  const [eventType, setEventType] = useState<EventType>("flexible");
+
+  // Flexible mode: the creator picks their own dates + time windows, exactly
+  // like guests will later. Duration suggestions are just voting chips.
+  const [myWindows, setMyWindows] = useState<Slot[]>([]);
   const [durationOptions, setDurationOptions] = useState<number[]>([60]);
-  const [dayStart, setDayStart] = useState(9 * 60);
-  const [dayEnd, setDayEnd] = useState(21 * 60);
-  const [dates, setDates] = useState<string[]>([todayIso(1)]);
+
+  // Fixed mode: one specific date and exact start/end time (e.g. a birthday).
+  const [fixedDate, setFixedDate] = useState<string>(todayIso(7));
+  const [fixedStart, setFixedStart] = useState("18:00");
+  const [fixedEnd, setFixedEnd] = useState("20:00");
+
   const [locationInput, setLocationInput] = useState("");
   const [locationSuggestions, setLocationSuggestions] = useState<string[]>([]);
   const [locationSearchResults, setLocationSearchResults] = useState<LocationSearchResult[]>([]);
@@ -161,30 +176,84 @@ function Create() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !name.trim() || dates.length === 0 || durationOptions.length === 0) {
-      toast.error("Add a title, your name, at least one date, and one duration suggestion.");
+    if (!title.trim() || !name.trim()) {
+      toast.error("Add a title and your name.");
       return;
     }
+    if (eventType === "flexible" && myWindows.length === 0) {
+      toast.error("Add at least one date and time window you're available.");
+      return;
+    }
+
+    let fixedStartMin: number | null = null;
+    let fixedEndMin: number | null = null;
+    if (eventType === "fixed") {
+      fixedStartMin = timeStringToMinutes(fixedStart);
+      fixedEndMin = timeStringToMinutes(fixedEnd);
+      if (fixedStartMin === null || fixedEndMin === null || fixedEndMin <= fixedStartMin) {
+        toast.error("Set a valid start and end time for the fixed date.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     const code = generateCode();
     const token = generateToken();
+
+    const dateOptions =
+      eventType === "fixed"
+        ? [fixedDate]
+        : Array.from(new Set(myWindows.map((w) => w.date))).sort((a, b) => a.localeCompare(b));
+    const dayStart =
+      eventType === "fixed"
+        ? (fixedStartMin as number)
+        : Math.min(...myWindows.map((w) => w.start));
+    const dayEnd =
+      eventType === "fixed" ? (fixedEndMin as number) : Math.max(...myWindows.map((w) => w.end));
+    const durationMinutes =
+      eventType === "fixed"
+        ? (fixedEndMin as number) - (fixedStartMin as number)
+        : (durationOptions.find((d) => d !== ALL_DAY_DURATION) ?? 60);
+
     try {
-      const { error } = await supabase.from("events").insert({
-        code,
-        title: title.trim().slice(0, 100),
-        creator_name: name.trim().slice(0, 50),
-        creator_token: token,
-        duration_minutes:
-          durationOptions.find((d) => d !== ALL_DAY_DURATION) ?? Math.max(dayEnd - dayStart, 30),
-        duration_options: durationOptions,
-        date_options: dates,
-        day_start_minute: dayStart,
-        day_end_minute: dayEnd,
-        location_suggestions: locationSuggestions,
-      });
-      if (error) {
-        toast.error(error.message || "Could not create event. Try again.");
+      const { data: eventRow, error } = await supabase
+        .from("events")
+        .insert({
+          code,
+          title: title.trim().slice(0, 100),
+          description: description.trim().slice(0, 500) || null,
+          creator_name: name.trim().slice(0, 50),
+          creator_token: token,
+          event_type: eventType,
+          duration_minutes: durationMinutes,
+          duration_options: eventType === "fixed" ? [durationMinutes] : durationOptions,
+          date_options: dateOptions,
+          day_start_minute: dayStart,
+          day_end_minute: dayEnd,
+          location_suggestions: locationSuggestions,
+        })
+        .select("id")
+        .single();
+      if (error || !eventRow) {
+        toast.error(error?.message || "Could not create event. Try again.");
         return;
+      }
+
+      const creatorAvailability: Slot[] =
+        eventType === "fixed"
+          ? [{ date: fixedDate, start: fixedStartMin as number, end: fixedEndMin as number }]
+          : myWindows;
+
+      const { error: responseError } = await supabase.from("responses").insert({
+        event_id: eventRow.id,
+        name: name.trim().slice(0, 50),
+        availability: creatorAvailability as unknown as never,
+        preferred_duration: eventType === "fixed" ? durationMinutes : null,
+      });
+      if (responseError) {
+        toast.error(
+          "Event created, but your own availability couldn't be saved. Add it from the event page.",
+        );
       }
     } catch {
       toast.error("Could not create event. Try again.");
@@ -193,7 +262,6 @@ function Create() {
       setSubmitting(false);
     }
 
-    // remember creator locally so this browser can identify as creator
     try {
       localStorage.setItem(`meetly:creator:${code}`, token);
       localStorage.setItem(`meetly:name:${code}`, name.trim());
@@ -206,10 +274,6 @@ function Create() {
 
   const mapPreview = locationSuggestions.at(-1);
   const mapPreviewCoordinates = mapPreview ? locationCoordinates[mapPreview] : undefined;
-  const requiredWindow = Math.max(
-    15,
-    ...durationOptions.filter((option) => option !== ALL_DAY_DURATION),
-  );
 
   return (
     <div className="min-h-screen">
@@ -243,6 +307,17 @@ function Create() {
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="description">Description (optional)</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Anything guests should know — what to bring, dress code, parking..."
+              maxLength={500}
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="name">Your name</Label>
             <Input
               id="name"
@@ -254,78 +329,84 @@ function Create() {
           </div>
 
           <div className="space-y-2">
-            <Label>Duration suggestions</Label>
-            <div className="flex flex-wrap gap-2">
-              {[30, 60, 90, 120, 180, 240, ALL_DAY_DURATION].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => toggleDuration(m)}
-                  className={`rounded-full border px-4 py-1.5 text-sm transition ${
-                    durationOptions.includes(m)
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {durationToLabel(m)}
-                </button>
-              ))}
-            </div>
+            <Label>Dates</Label>
+            <Tabs value={eventType} onValueChange={(v) => setEventType(v as EventType)}>
+              <TabsList className="grid w-full grid-cols-2 sm:w-auto">
+                <TabsTrigger value="flexible">Flexible dates</TabsTrigger>
+                <TabsTrigger value="fixed">Fixed date</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <p className="text-xs text-muted-foreground">
-              People can pick what works best for them, including an all-day option.
+              {eventType === "flexible"
+                ? "Everyone adds the dates and times that work for them, and we'll find the best overlap."
+                : "Lock in one specific date and time — good for birthdays or anything that can't move."}
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Earliest start ({minutesToLabel(dayStart)})</Label>
-              <input
-                type="range"
-                min={0}
-                max={1425}
-                step={15}
-                value={dayStart}
-                onChange={(e) =>
-                  setDayStart(Math.min(Number(e.target.value), dayEnd - requiredWindow))
-                }
-                className="w-full accent-[var(--color-primary)]"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Latest end ({minutesToLabel(dayEnd)})</Label>
-              <input
-                type="range"
-                min={15}
-                max={1440}
-                step={15}
-                value={dayEnd}
-                onChange={(e) =>
-                  setDayEnd(Math.max(Number(e.target.value), dayStart + requiredWindow))
-                }
-                className="w-full accent-[var(--color-primary)]"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <div className="w-full space-y-2 rounded-xl border bg-background p-4">
-                <Label>Add any date ({dates.length} selected)</Label>
+          {eventType === "flexible" ? (
+            <>
+              <div className="space-y-2">
+                <Label>Duration suggestions</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[30, 60, 90, 120, 180, 240, ALL_DAY_DURATION].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => toggleDuration(m)}
+                      className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                        durationOptions.includes(m)
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      {durationToLabel(m)}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Use the calendar to pick one or multiple dates.
+                  People can vote on what works best, including an all-day option.
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Your availability</Label>
+                <AvailabilityBuilder windows={myWindows} onChange={setMyWindows} />
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Date</Label>
                 <Calendar
-                  mode="multiple"
-                  selected={dates.map(isoToDate)}
-                  onSelect={(selection) =>
-                    setDates((selection ?? []).map(dateToIso).sort((a, b) => a.localeCompare(b)))
-                  }
+                  mode="single"
+                  selected={isoToDate(fixedDate)}
+                  onSelect={(date) => date && setFixedDate(dateToIso(date))}
                   disabled={{ before: isoToDate(todayIso(0)) }}
                   className="rounded-lg border bg-card"
                 />
               </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Start time</Label>
+                  <input
+                    type="time"
+                    value={fixedStart}
+                    onChange={(e) => setFixedStart(e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End time</Label>
+                  <input
+                    type="time"
+                    value={fixedEnd}
+                    onChange={(e) => setFixedEnd(e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label>Location suggestions</Label>

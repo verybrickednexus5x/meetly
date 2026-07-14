@@ -24,8 +24,10 @@ export type Database = {
           date_options: Json
           day_end_minute: number
           day_start_minute: number
+          description: string | null
           duration_minutes: number
           duration_options: Json
+          event_type: string
           id: string
           location_suggestions: Json
           title: string
@@ -39,8 +41,10 @@ export type Database = {
           date_options?: Json
           day_end_minute?: number
           day_start_minute?: number
+          description?: string | null
           duration_minutes?: number
           duration_options?: Json
+          event_type?: string
           id?: string
           location_suggestions?: Json
           title: string
@@ -54,8 +58,10 @@ export type Database = {
           date_options?: Json
           day_end_minute?: number
           day_start_minute?: number
+          description?: string | null
           duration_minutes?: number
           duration_options?: Json
+          event_type?: string
           id?: string
           location_suggestions?: Json
           title?: string
