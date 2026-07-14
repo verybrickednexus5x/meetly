@@ -1,4 +1,5 @@
 export type DateOption = string; // ISO date YYYY-MM-DD
+export const ALL_DAY_DURATION = -1;
 
 export interface Slot {
   date: DateOption;
@@ -25,6 +26,13 @@ export function minutesToLabel(m: number): string {
   const period = h >= 12 ? "PM" : "AM";
   const h12 = ((h + 11) % 12) + 1;
   return `${h12}:${mm.toString().padStart(2, "0")} ${period}`;
+}
+
+export function durationToLabel(duration: number): string {
+  if (duration === ALL_DAY_DURATION) return "All day";
+  if (duration < 60) return `${duration}m`;
+  const hours = duration / 60;
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
 export function formatDate(iso: string): string {

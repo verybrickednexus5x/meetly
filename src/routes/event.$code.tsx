@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useSuspenseQuery, useQueryClient, queryOptions } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  BedDouble,
   CalendarClock,
   Check,
+  Clock3,
   Copy,
-  Loader2,
+  MapPin,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -16,8 +18,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  ALL_DAY_DURATION,
   formatDate,
   minutesToLabel,
+  durationToLabel,
   computeBestSlot,
   type Slot,
 } from "@/lib/hangout";
@@ -32,12 +36,19 @@ type EventRow = {
   date_options: string[];
   day_start_minute: number;
   day_end_minute: number;
+  duration_options?: number[] | null;
+  allow_sleepover?: boolean | null;
+  location_suggestions?: string[] | null;
 };
 type ResponseRow = {
   id: string;
   event_id: string;
   name: string;
   availability: Slot[];
+  preferred_duration?: number | null;
+  preferred_location?: string | null;
+  can_sleepover?: boolean | null;
+  leave_by_minute?: number | null;
 };
 
 function eventQuery(code: string) {
@@ -96,6 +107,24 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
+function normalizeDurationOptions(event: EventRow): number[] {
+  const raw = Array.isArray(event.duration_options)
+    ? event.duration_options
+    : [event.duration_minutes];
+  const cleaned = raw
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && (value === ALL_DAY_DURATION || value >= 15));
+  return cleaned.length > 0 ? Array.from(new Set(cleaned)).sort((a, b) => a - b) : [60];
+}
+
+function normalizeLocationSuggestions(event: EventRow): string[] {
+  if (!Array.isArray(event.location_suggestions)) return [];
+  return event.location_suggestions
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function EventPage() {
   const { code } = Route.useParams();
   const upper = code.toUpperCase();
@@ -119,22 +148,61 @@ function EventPage() {
     () => responses.find((r) => r.name.toLowerCase() === myName.trim().toLowerCase()),
     [responses, myName],
   );
+  const durationOptions = useMemo(() => normalizeDurationOptions(event), [event]);
+  const locationSuggestions = useMemo(() => normalizeLocationSuggestions(event), [event]);
+  const allowsSleepover = Boolean(event.allow_sleepover);
 
   const [availability, setAvailability] = useState<Slot[]>([]);
+  const [preferredDuration, setPreferredDuration] = useState<number | null>(null);
+  const [preferredLocation, setPreferredLocation] = useState("");
+  const [canSleepover, setCanSleepover] = useState(false);
+  const [leaveByMinute, setLeaveByMinute] = useState(9 * 60);
   useEffect(() => {
     setAvailability(myResponse?.availability ?? []);
+    setPreferredDuration(myResponse?.preferred_duration ?? null);
+    setPreferredLocation(myResponse?.preferred_location ?? "");
+    setCanSleepover(Boolean(myResponse?.can_sleepover));
+    setLeaveByMinute(myResponse?.leave_by_minute ?? 9 * 60);
   }, [myResponse?.id]);
+
+  const durationVoteCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const option of durationOptions) counts.set(option, 0);
+    for (const response of responses) {
+      if (response.preferred_duration == null) continue;
+      counts.set(response.preferred_duration, (counts.get(response.preferred_duration) ?? 0) + 1);
+    }
+    return counts;
+  }, [durationOptions, responses]);
+
+  const winningDuration = useMemo(() => {
+    let winner = durationOptions[0] ?? event.duration_minutes;
+    let winnerVotes = -1;
+    for (const option of durationOptions) {
+      const votes = durationVoteCounts.get(option) ?? 0;
+      if (votes > winnerVotes) {
+        winner = option;
+        winnerVotes = votes;
+      }
+    }
+    return winner;
+  }, [durationOptions, durationVoteCounts, event.duration_minutes]);
+
+  const effectiveDuration =
+    winningDuration === ALL_DAY_DURATION
+      ? event.day_end_minute - event.day_start_minute
+      : winningDuration;
 
   const best = useMemo(
     () =>
       computeBestSlot(
         event.date_options,
-        event.duration_minutes,
+        effectiveDuration,
         responses,
         event.day_start_minute,
         event.day_end_minute,
       ),
-    [event, responses],
+    [effectiveDuration, event, responses],
   );
 
   async function saveAvailability() {
@@ -149,12 +217,22 @@ function EventPage() {
       event_id: event.id,
       name: myName.trim().slice(0, 50),
       availability: availability as unknown as never,
+      preferred_duration: preferredDuration,
+      preferred_location: preferredLocation || null,
+      can_sleepover: allowsSleepover ? canSleepover : false,
+      leave_by_minute: allowsSleepover && canSleepover ? leaveByMinute : null,
     };
     let error;
     if (myResponse) {
       ({ error } = await supabase
         .from("responses")
-        .update({ availability: availability as unknown as never })
+        .update({
+          availability: availability as unknown as never,
+          preferred_duration: preferredDuration,
+          preferred_location: preferredLocation || null,
+          can_sleepover: allowsSleepover ? canSleepover : false,
+          leave_by_minute: allowsSleepover && canSleepover ? leaveByMinute : null,
+        })
         .eq("id", myResponse.id));
     } else {
       ({ error } = await supabase.from("responses").insert(payload));
@@ -169,6 +247,31 @@ function EventPage() {
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/event/${upper}` : "";
+  const locationVoteCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const location of locationSuggestions) counts.set(location, 0);
+    for (const response of responses) {
+      if (!response.preferred_location) continue;
+      counts.set(
+        response.preferred_location,
+        (counts.get(response.preferred_location) ?? 0) + 1,
+      );
+    }
+    return counts;
+  }, [locationSuggestions, responses]);
+  const topLocation = useMemo(() => {
+    let winner = locationSuggestions[0] ?? "";
+    let votes = -1;
+    for (const location of locationSuggestions) {
+      const count = locationVoteCounts.get(location) ?? 0;
+      if (count > votes) {
+        votes = count;
+        winner = location;
+      }
+    }
+    return winner;
+  }, [locationSuggestions, locationVoteCounts]);
+  const sleepoverCount = responses.filter((r) => r.can_sleepover).length;
 
   return (
     <div className="min-h-screen">
@@ -195,7 +298,7 @@ function EventPage() {
               </div>
               <h1 className="mt-1 font-display text-4xl font-bold">{event.title}</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                {event.duration_minutes} min hangout · window{" "}
+                Suggested duration: {durationToLabel(winningDuration)} · window{" "}
                 {minutesToLabel(event.day_start_minute)}–
                 {minutesToLabel(event.day_end_minute)}
               </p>
@@ -234,6 +337,9 @@ function EventPage() {
                 </div>
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
+                Duration used: {durationToLabel(winningDuration)}
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
                 Works for {best.attendees} of {responses.length}{" "}
                 {responses.length === 1 ? "person" : "people"}
               </div>
@@ -248,7 +354,7 @@ function EventPage() {
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Tap slots you're free. We'll find a window that fits{" "}
-              {event.duration_minutes} minutes.
+              {durationToLabel(winningDuration)}.
             </p>
 
             <div className="mt-4 space-y-2">
@@ -264,6 +370,90 @@ function EventPage() {
             </div>
 
             <div className="mt-6 space-y-6">
+              {durationOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Pick your preferred duration</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {durationOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setPreferredDuration(option)}
+                        className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                          preferredDuration === option
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "hover:bg-muted"
+                        }`}
+                      >
+                        {durationToLabel(option)} · {durationVoteCounts.get(option) ?? 0} votes
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {locationSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Pick your preferred location</Label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {locationSuggestions.map((location) => (
+                      <button
+                        key={location}
+                        type="button"
+                        onClick={() => setPreferredLocation(location)}
+                        className={`rounded-xl border p-3 text-left text-sm transition ${
+                          preferredLocation === location
+                            ? "border-primary bg-primary/10"
+                            : "hover:border-primary/40 hover:bg-muted"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1 font-medium">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {location}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {locationVoteCounts.get(location) ?? 0} votes
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {allowsSleepover && (
+                <div className="space-y-3 rounded-xl border bg-background p-4">
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="h-4 w-4 text-primary" />
+                    <Label className="text-sm">Sleepover</Label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCanSleepover((v) => !v)}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                      canSleepover
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    }`}
+                  >
+                    {canSleepover ? "I can sleep over" : "I can't sleep over"}
+                  </button>
+                  {canSleepover && (
+                    <div className="space-y-2">
+                      <Label>Leave by: {minutesToLabel(leaveByMinute)}</Label>
+                      <input
+                        type="range"
+                        min={360}
+                        max={900}
+                        step={15}
+                        value={leaveByMinute}
+                        onChange={(e) => setLeaveByMinute(Number(e.target.value))}
+                        className="w-full accent-[var(--color-primary)]"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {event.date_options.map((iso) => (
                 <DayGrid
                   key={iso}
@@ -295,19 +485,77 @@ function EventPage() {
                 No one has replied yet. Share the code above with your friends!
               </p>
             ) : (
-              <ul className="mt-4 space-y-2">
-                {responses.map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex items-center justify-between rounded-xl border bg-background px-3 py-2"
-                  >
-                    <span className="font-medium">{r.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {r.availability.length} slots
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-4 space-y-4">
+                {locationSuggestions.length > 0 && (
+                  <div className="rounded-xl border bg-background p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                      Location votes
+                    </div>
+                    <div className="space-y-1.5">
+                      {locationSuggestions.map((location) => (
+                        <div key={location} className="flex items-center justify-between text-sm">
+                          <span className="truncate">{location}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {locationVoteCounts.get(location) ?? 0}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {topLocation ? (
+                      <iframe
+                        title={`Map preview for ${topLocation}`}
+                        src={`https://www.google.com/maps?q=${encodeURIComponent(topLocation)}&output=embed`}
+                        className="mt-3 h-40 w-full rounded-lg border"
+                        loading="lazy"
+                      />
+                    ) : null}
+                  </div>
+                )}
+
+                {allowsSleepover && (
+                  <div className="rounded-xl border bg-background p-3 text-sm">
+                    <div className="flex items-center gap-1">
+                      <BedDouble className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">Sleepover</span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {sleepoverCount} of {responses.length} can sleep over
+                    </div>
+                  </div>
+                )}
+
+                <ul className="space-y-2">
+                  {responses.map((r) => (
+                    <li key={r.id} className="rounded-xl border bg-background px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{r.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {r.availability.length} slots
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                        {r.preferred_duration != null && (
+                          <span>Duration: {durationToLabel(r.preferred_duration)}</span>
+                        )}
+                        {r.preferred_location && (
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {r.preferred_location}
+                          </span>
+                        )}
+                        {allowsSleepover && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock3 className="h-3 w-3" />
+                            {r.can_sleepover
+                              ? `Sleepover, leaves ${minutesToLabel(r.leave_by_minute ?? 9 * 60)}`
+                              : "No sleepover"}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <div className="mt-6 rounded-xl bg-muted/60 p-4 text-xs text-muted-foreground">
               Share this code: <span className="font-mono font-bold">{event.code}</span>

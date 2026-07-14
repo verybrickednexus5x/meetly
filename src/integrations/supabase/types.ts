@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       events: {
         Row: {
+          allow_sleepover: boolean
           code: string
           created_at: string
           creator_name: string
@@ -24,10 +25,13 @@ export type Database = {
           day_end_minute: number
           day_start_minute: number
           duration_minutes: number
+          duration_options: Json
           id: string
+          location_suggestions: Json
           title: string
         }
         Insert: {
+          allow_sleepover?: boolean
           code: string
           created_at?: string
           creator_name: string
@@ -36,10 +40,13 @@ export type Database = {
           day_end_minute?: number
           day_start_minute?: number
           duration_minutes?: number
+          duration_options?: Json
           id?: string
+          location_suggestions?: Json
           title: string
         }
         Update: {
+          allow_sleepover?: boolean
           code?: string
           created_at?: string
           creator_name?: string
@@ -48,7 +55,9 @@ export type Database = {
           day_end_minute?: number
           day_start_minute?: number
           duration_minutes?: number
+          duration_options?: Json
           id?: string
+          location_suggestions?: Json
           title?: string
         }
         Relationships: []
@@ -56,24 +65,36 @@ export type Database = {
       responses: {
         Row: {
           availability: Json
+          can_sleepover: boolean
           created_at: string
           event_id: string
           id: string
+          leave_by_minute: number | null
           name: string
+          preferred_duration: number | null
+          preferred_location: string | null
         }
         Insert: {
           availability?: Json
+          can_sleepover?: boolean
           created_at?: string
           event_id: string
           id?: string
+          leave_by_minute?: number | null
           name: string
+          preferred_duration?: number | null
+          preferred_location?: string | null
         }
         Update: {
           availability?: Json
+          can_sleepover?: boolean
           created_at?: string
           event_id?: string
           id?: string
+          leave_by_minute?: number | null
           name?: string
+          preferred_duration?: number | null
+          preferred_location?: string | null
         }
         Relationships: [
           {
