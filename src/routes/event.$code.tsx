@@ -51,6 +51,15 @@ type ResponseRow = {
   leave_by_minute?: number | null;
 };
 
+function openStreetMapEmbedUrl(lat: number, lon: number) {
+  const delta = 0.01;
+  const bbox = [lon - delta, lat - delta, lon + delta, lat + delta]
+    .map((value) => value.toFixed(6))
+    .join("%2C");
+  const marker = encodeURIComponent(`${lat.toFixed(6)},${lon.toFixed(6)}`);
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${marker}`;
+}
+
 function eventQuery(code: string) {
   return queryOptions({
     queryKey: ["event", code],
@@ -269,6 +278,43 @@ function EventPage() {
     }
     return winner;
   }, [locationSuggestions, locationVoteCounts]);
+  const [topLocationCoords, setTopLocationCoords] = useState<{ lat: number; lon: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!topLocation) {
+      setTopLocationCoords(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(topLocation)}`,
+          { signal: controller.signal, headers: { Accept: "application/json" } },
+        );
+        if (!res.ok) throw new Error("Location lookup failed");
+        const payload = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+        const first = payload[0];
+        const lat = Number(first?.lat);
+        const lon = Number(first?.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          setTopLocationCoords({ lat, lon });
+          return;
+        }
+        setTopLocationCoords(null);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setTopLocationCoords(null);
+        }
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [topLocation]);
   const sleepoverCount = responses.filter((r) => r.can_sleepover).length;
 
   return (
@@ -494,10 +540,10 @@ function EventPage() {
                         </div>
                       ))}
                     </div>
-                    {topLocation ? (
+                    {topLocation && topLocationCoords ? (
                       <iframe
                         title={`Map preview for ${topLocation}`}
-                        src={`https://www.google.com/maps?q=${encodeURIComponent(topLocation)}&output=embed`}
+                        src={openStreetMapEmbedUrl(topLocationCoords.lat, topLocationCoords.lon)}
                         className="mt-3 h-40 w-full rounded-lg border"
                         loading="lazy"
                       />
