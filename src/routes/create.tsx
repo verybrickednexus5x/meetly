@@ -10,7 +10,6 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   ALL_DAY_DURATION,
   durationToLabel,
-  formatDate,
   generateCode,
   generateToken,
   minutesToLabel,
@@ -65,8 +64,7 @@ function Create() {
   const [durationOptions, setDurationOptions] = useState<number[]>([60]);
   const [dayStart, setDayStart] = useState(9 * 60);
   const [dayEnd, setDayEnd] = useState(21 * 60);
-  const [dates, setDates] = useState<string[]>([todayIso(1), todayIso(2), todayIso(3)]);
-  const [allowSleepover, setAllowSleepover] = useState(false);
+  const [dates, setDates] = useState<string[]>([todayIso(1)]);
   const [locationInput, setLocationInput] = useState("");
   const [locationSuggestions, setLocationSuggestions] = useState<string[]>([]);
   const [locationSearchResults, setLocationSearchResults] = useState<LocationSearchResult[]>([]);
@@ -75,10 +73,6 @@ function Create() {
     Record<string, { lat: number; lon: number }>
   >({});
   const [submitting, setSubmitting] = useState(false);
-
-  const toggleDate = (iso: string) => {
-    setDates((d) => (d.includes(iso) ? d.filter((x) => x !== iso) : [...d, iso].sort()));
-  };
 
   const toggleDuration = (minutes: number) => {
     setDurationOptions((current) => {
@@ -174,9 +168,8 @@ function Create() {
     setSubmitting(true);
     const code = generateCode();
     const token = generateToken();
-    const { data, error } = await supabase
-      .from("events")
-      .insert({
+    try {
+      const { error } = await supabase.from("events").insert({
         code,
         title: title.trim().slice(0, 100),
         creator_name: name.trim().slice(0, 50),
@@ -187,16 +180,20 @@ function Create() {
         date_options: dates,
         day_start_minute: dayStart,
         day_end_minute: dayEnd,
-        allow_sleepover: allowSleepover,
+        allow_sleepover: false,
         location_suggestions: locationSuggestions,
-      })
-      .select()
-      .single();
-    setSubmitting(false);
-    if (error || !data) {
+      });
+      if (error) {
+        toast.error(error.message || "Could not create event. Try again.");
+        return;
+      }
+    } catch {
       toast.error("Could not create event. Try again.");
       return;
+    } finally {
+      setSubmitting(false);
     }
+
     // remember creator locally so this browser can identify as creator
     try {
       localStorage.setItem(`meetly:creator:${code}`, token);
@@ -208,7 +205,6 @@ function Create() {
     navigate({ to: "/event/$code", params: { code } });
   }
 
-  const nextDays = Array.from({ length: 14 }, (_, i) => todayIso(i));
   const mapPreview = locationSuggestions.at(-1);
   const mapPreviewCoordinates = mapPreview ? locationCoordinates[mapPreview] : undefined;
   const requiredWindow = Math.max(
@@ -313,34 +309,11 @@ function Create() {
           </div>
 
           <div className="space-y-2">
-            <Label>Possible dates ({dates.length} selected)</Label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {nextDays.map((iso) => {
-                const selected = dates.includes(iso);
-                return (
-                  <button
-                    key={iso}
-                    type="button"
-                    onClick={() => toggleDate(iso)}
-                    className={`rounded-xl border p-3 text-left text-sm transition ${
-                      selected
-                        ? "border-primary bg-primary/10"
-                        : "hover:border-primary/40 hover:bg-muted"
-                    }`}
-                  >
-                    <div className="font-medium">{formatDate(iso)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {selected ? "Included" : "Tap to add"}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
             <div className="mt-3 flex flex-wrap items-end gap-2">
               <div className="w-full space-y-2 rounded-xl border bg-background p-4">
-                <Label>Add any date</Label>
+                <Label>Add any date ({dates.length} selected)</Label>
                 <p className="text-xs text-muted-foreground">
-                  Use the calendar to pick one or multiple extra dates.
+                  Use the calendar to pick one or multiple dates.
                 </p>
                 <Calendar
                   mode="multiple"
@@ -353,24 +326,6 @@ function Create() {
                 />
               </div>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Sleepover planning</Label>
-            <button
-              type="button"
-              onClick={() => setAllowSleepover((v) => !v)}
-              className={`rounded-xl border px-4 py-2 text-sm transition ${
-                allowSleepover
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border hover:border-primary/40 hover:bg-muted"
-              }`}
-            >
-              {allowSleepover ? "Sleepover suggestions enabled" : "Enable sleepover suggestions"}
-            </button>
-            <p className="text-xs text-muted-foreground">
-              If enabled, everyone can choose if they can sleep over and add their leave time.
-            </p>
           </div>
 
           <div className="space-y-2">

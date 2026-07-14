@@ -3,10 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSuspenseQuery, useQueryClient, queryOptions } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  BedDouble,
   CalendarClock,
   Check,
-  Clock3,
   Copy,
   MapPin,
   Sparkles,
@@ -37,7 +35,6 @@ type EventRow = {
   day_start_minute: number;
   day_end_minute: number;
   duration_options?: number[] | null;
-  allow_sleepover?: boolean | null;
   location_suggestions?: string[] | null;
 };
 type ResponseRow = {
@@ -47,8 +44,6 @@ type ResponseRow = {
   availability: Slot[];
   preferred_duration?: number | null;
   preferred_location?: string | null;
-  can_sleepover?: boolean | null;
-  leave_by_minute?: number | null;
 };
 
 function openStreetMapEmbedUrl(lat: number, lon: number) {
@@ -159,19 +154,14 @@ function EventPage() {
   );
   const durationOptions = useMemo(() => normalizeDurationOptions(event), [event]);
   const locationSuggestions = useMemo(() => normalizeLocationSuggestions(event), [event]);
-  const allowsSleepover = Boolean(event.allow_sleepover);
 
   const [availability, setAvailability] = useState<Slot[]>([]);
   const [preferredDuration, setPreferredDuration] = useState<number | null>(null);
   const [preferredLocation, setPreferredLocation] = useState("");
-  const [canSleepover, setCanSleepover] = useState(false);
-  const [leaveByMinute, setLeaveByMinute] = useState(9 * 60);
   useEffect(() => {
     setAvailability(myResponse?.availability ?? []);
     setPreferredDuration(myResponse?.preferred_duration ?? null);
     setPreferredLocation(myResponse?.preferred_location ?? "");
-    setCanSleepover(Boolean(myResponse?.can_sleepover));
-    setLeaveByMinute(myResponse?.leave_by_minute ?? 9 * 60);
   }, [myResponse]);
 
   const durationVoteCounts = useMemo(() => {
@@ -230,8 +220,6 @@ function EventPage() {
       availability: availability as unknown as never,
       preferred_duration: preferredDuration,
       preferred_location: preferredLocation || null,
-      can_sleepover: allowsSleepover ? canSleepover : false,
-      leave_by_minute: allowsSleepover && canSleepover ? leaveByMinute : null,
     };
     let error;
     if (myResponse) {
@@ -241,8 +229,6 @@ function EventPage() {
           availability: availability as unknown as never,
           preferred_duration: preferredDuration,
           preferred_location: preferredLocation || null,
-          can_sleepover: allowsSleepover ? canSleepover : false,
-          leave_by_minute: allowsSleepover && canSleepover ? leaveByMinute : null,
         })
         .eq("id", myResponse.id));
     } else {
@@ -315,7 +301,6 @@ function EventPage() {
       window.clearTimeout(timeout);
     };
   }, [topLocation]);
-  const sleepoverCount = responses.filter((r) => r.can_sleepover).length;
 
   return (
     <div className="min-h-screen">
@@ -461,40 +446,6 @@ function EventPage() {
                 </div>
               )}
 
-              {allowsSleepover && (
-                <div className="space-y-3 rounded-xl border bg-background p-4">
-                  <div className="flex items-center gap-2">
-                    <BedDouble className="h-4 w-4 text-primary" />
-                    <Label className="text-sm">Sleepover</Label>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCanSleepover((v) => !v)}
-                    className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                      canSleepover
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "hover:bg-muted"
-                    }`}
-                  >
-                    {canSleepover ? "I can sleep over" : "I can't sleep over"}
-                  </button>
-                  {canSleepover && (
-                    <div className="space-y-2">
-                      <Label>Leave by: {minutesToLabel(leaveByMinute)}</Label>
-                      <input
-                        type="range"
-                        min={360}
-                        max={900}
-                        step={15}
-                        value={leaveByMinute}
-                        onChange={(e) => setLeaveByMinute(Number(e.target.value))}
-                        className="w-full accent-[var(--color-primary)]"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
               {event.date_options.map((iso) => (
                 <DayGrid
                   key={iso}
@@ -551,18 +502,6 @@ function EventPage() {
                   </div>
                 )}
 
-                {allowsSleepover && (
-                  <div className="rounded-xl border bg-background p-3 text-sm">
-                    <div className="flex items-center gap-1">
-                      <BedDouble className="h-3.5 w-3.5 text-primary" />
-                      <span className="font-medium">Sleepover</span>
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {sleepoverCount} of {responses.length} can sleep over
-                    </div>
-                  </div>
-                )}
-
                 <ul className="space-y-2">
                   {responses.map((r) => (
                     <li key={r.id} className="rounded-xl border bg-background px-3 py-2">
@@ -580,14 +519,6 @@ function EventPage() {
                           <span className="inline-flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
                             {r.preferred_location}
-                          </span>
-                        )}
-                        {allowsSleepover && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock3 className="h-3 w-3" />
-                            {r.can_sleepover
-                              ? `Sleepover, leaves ${minutesToLabel(r.leave_by_minute ?? 9 * 60)}`
-                              : "No sleepover"}
                           </span>
                         )}
                       </div>
