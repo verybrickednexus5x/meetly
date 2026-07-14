@@ -442,7 +442,10 @@ function Create() {
                 {mapPreviewCoordinates ? (
                   <iframe
                     title={`Map preview for ${mapPreview}`}
-                    src={openStreetMapEmbedUrl(mapPreviewCoordinates.lat, mapPreviewCoordinates.lon)}
+                    src={openStreetMapEmbedUrl(
+                      mapPreviewCoordinates.lat,
+                      mapPreviewCoordinates.lon,
+                    )}
                     className="h-56 w-full"
                     loading="lazy"
                   />
