@@ -180,7 +180,6 @@ function Create() {
         date_options: dates,
         day_start_minute: dayStart,
         day_end_minute: dayEnd,
-        allow_sleepover: false,
         location_suggestions: locationSuggestions,
       });
       if (error) {
@@ -343,7 +342,7 @@ function Create() {
                 placeholder="Search and add a location"
                 maxLength={200}
               />
-              <Button type="button" variant="secondary" onClick={addLocationSuggestion}>
+              <Button type="button" variant="secondary" onClick={() => addLocationSuggestion()}>
                 <Plus className="mr-1.5 h-4 w-4" />
                 Add
               </Button>

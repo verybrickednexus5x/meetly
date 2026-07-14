@@ -47,7 +47,7 @@ function Home() {
               <h2 className="font-display text-2xl font-bold">Create an event</h2>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              You'll get a short shareable code. Pick the possible days and a duration.
+              You'll get a short shareable code. Add any dates that work and a duration.
             </p>
             <Button asChild size="lg" className="mt-6 w-full">
               <Link to="/create">Start planning</Link>
