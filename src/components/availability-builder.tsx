@@ -1,9 +1,17 @@
 import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { formatDate, minutesToLabel, timeStringToMinutes, type Slot } from "@/lib/hangout";
+import { DualRangeSlider } from "@/components/dual-range-slider";
+import {
+  AVAILABILITY_SHORTCUTS,
+  DAY_SLIDER_MIN,
+  DAY_SLIDER_MAX,
+  formatDate,
+  minutesToLabel,
+  type Slot,
+} from "@/lib/hangout";
 
 function todayIso(offset = 0) {
   const d = new Date();
@@ -33,38 +41,12 @@ function DateWindowRow({
   onAdd: (start: number, end: number) => void;
   onRemove: (index: number) => void;
 }) {
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("17:00");
-
-  const add = () => {
-    const startMin = timeStringToMinutes(start);
-    const endMin = timeStringToMinutes(end);
-    if (startMin === null || endMin === null || endMin <= startMin) return;
-    onAdd(startMin, endMin);
-  };
+  const [pending, setPending] = useState({ start: 9 * 60, end: 17 * 60 });
 
   return (
     <div className="rounded-xl border bg-background p-3">
       <div className="text-sm font-medium">{formatDate(date)}</div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          type="time"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-          className="rounded-md border bg-background px-2 py-1 text-sm"
-        />
-        <span className="text-xs text-muted-foreground">to</span>
-        <input
-          type="time"
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-          className="rounded-md border bg-background px-2 py-1 text-sm"
-        />
-        <Button type="button" size="sm" variant="secondary" onClick={add}>
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          Add
-        </Button>
-      </div>
+
       {windows.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {windows.map((w, i) => (
@@ -79,11 +61,44 @@ function DateWindowRow({
             </button>
           ))}
         </div>
-      ) : (
-        <p className="mt-2 text-xs text-muted-foreground">
-          No time windows added for this date yet.
-        </p>
-      )}
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {Object.entries(AVAILABILITY_SHORTCUTS).map(([label, range]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setPending(range)}
+            className="rounded-full border px-2.5 py-1 text-xs transition hover:bg-muted"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 px-1">
+        <DualRangeSlider
+          min={DAY_SLIDER_MIN}
+          max={DAY_SLIDER_MAX}
+          start={pending.start}
+          end={pending.end}
+          onChange={(start, end) => setPending({ start, end })}
+        />
+      </div>
+
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="mt-3"
+        onClick={() => onAdd(pending.start, pending.end)}
+      >
+        Add this block
+      </Button>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        Drag the handles, or use a shortcut, then add — you can add as many blocks as you want for
+        this date.
+      </p>
     </div>
   );
 }
@@ -126,8 +141,8 @@ export function AvailabilityBuilder({
       <div>
         <Label>Which dates work? ({visibleDates.length} selected)</Label>
         <p className="mt-1 text-xs text-muted-foreground">
-          Pick dates on the calendar, then add one or more time windows for each — as many as you
-          want.
+          Pick dates on the calendar, then drag a slider for each — no need to tap individual time
+          slots. Add multiple blocks per day if you're free at different times.
         </p>
         <Calendar
           mode="multiple"

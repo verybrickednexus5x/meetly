@@ -23,6 +23,7 @@ type EventRow = {
   code: string;
   title: string;
   description?: string | null;
+  category?: string | null;
   event_type?: string | null;
   creator_name: string;
   creator_token: string;
@@ -331,11 +332,16 @@ function EventPage() {
         <div className="rounded-3xl border bg-card p-6 shadow-sm md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Hosted by {event.creator_name}
+              <div className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                Started by {event.creator_name}
                 <Badge variant={isFixed ? "default" : "secondary"} className="normal-case">
                   {isFixed ? "Fixed date" : "Flexible dates"}
                 </Badge>
+                {event.category ? (
+                  <Badge variant="outline" className="normal-case">
+                    {event.category}
+                  </Badge>
+                ) : null}
               </div>
               <h1 className="mt-1 font-display text-4xl font-bold">{event.title}</h1>
               {event.description ? (

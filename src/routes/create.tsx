@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AvailabilityBuilder } from "@/components/availability-builder";
 import {
   ALL_DAY_DURATION,
+  DURATION_PRESETS,
   durationToLabel,
   generateCode,
   generateToken,
@@ -74,6 +75,8 @@ function Create() {
   // like guests will later. Duration suggestions are just voting chips.
   const [myWindows, setMyWindows] = useState<Slot[]>([]);
   const [durationOptions, setDurationOptions] = useState<number[]>([60]);
+  const [customDurationMinutes, setCustomDurationMinutes] = useState("");
+  const [category, setCategory] = useState<string>("");
 
   // Fixed mode: one specific date and exact start/end time (e.g. a birthday).
   const [fixedDate, setFixedDate] = useState<string>(todayIso(7));
@@ -222,6 +225,7 @@ function Create() {
           code,
           title: title.trim().slice(0, 100),
           description: description.trim().slice(0, 500) || null,
+          category: category || null,
           creator_name: name.trim().slice(0, 50),
           creator_token: token,
           event_type: eventType,
@@ -307,6 +311,25 @@ function Create() {
             />
           </div>
           <div className="space-y-2">
+            <Label>Type (optional)</Label>
+            <div className="flex flex-wrap gap-2">
+              {["Sports", "Food", "Gaming", "Study", "Other"].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCategory((current) => (current === c ? "" : c))}
+                  className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                    category === c
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="description">Description (optional)</Label>
             <Textarea
               id="description"
@@ -346,9 +369,9 @@ function Create() {
           {eventType === "flexible" ? (
             <>
               <div className="space-y-2">
-                <Label>Duration suggestions</Label>
+                <Label>How long should it be?</Label>
                 <div className="flex flex-wrap gap-2">
-                  {[30, 60, 90, 120, 180, 240, ALL_DAY_DURATION].map((m) => (
+                  {[...DURATION_PRESETS, ALL_DAY_DURATION].map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -359,17 +382,57 @@ function Create() {
                           : "hover:bg-muted"
                       }`}
                     >
-                      {durationToLabel(m)}
+                      {m === DURATION_PRESETS[DURATION_PRESETS.length - 1]
+                        ? "4+ hours"
+                        : durationToLabel(m)}
                     </button>
                   ))}
+                  {durationOptions
+                    .filter((m) => !DURATION_PRESETS.includes(m) && m !== ALL_DAY_DURATION)
+                    .map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => toggleDuration(m)}
+                        className="rounded-full border border-primary bg-primary px-4 py-1.5 text-sm text-primary-foreground"
+                      >
+                        {durationToLabel(m)}
+                      </button>
+                    ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={5}
+                    step={5}
+                    value={customDurationMinutes}
+                    onChange={(e) => setCustomDurationMinutes(e.target.value)}
+                    placeholder="Custom (minutes)"
+                    className="w-40 rounded-md border bg-background px-2 py-1.5 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const value = Number(customDurationMinutes);
+                      if (Number.isFinite(value) && value >= 5) {
+                        toggleDuration(Math.round(value));
+                        setCustomDurationMinutes("");
+                      }
+                    }}
+                  >
+                    Add custom
+                  </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  People can vote on what works best, including an all-day option.
+                  Select as many as make sense (a coffee vs. a hike need very different amounts of
+                  time) — people vote on what works.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label>Your availability</Label>
+                <Label>When are you available?</Label>
                 <AvailabilityBuilder windows={myWindows} onChange={setMyWindows} />
               </div>
             </>

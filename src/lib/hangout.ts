@@ -1,6 +1,19 @@
 export type DateOption = string; // ISO date YYYY-MM-DD
 export const ALL_DAY_DURATION = -1;
 
+/** Bounds for the availability slider — 6:30 AM to 11:00 PM, matching a realistic day. */
+export const DAY_SLIDER_MIN = 6 * 60 + 30;
+export const DAY_SLIDER_MAX = 23 * 60;
+
+export const AVAILABILITY_SHORTCUTS = {
+  "All day": { start: DAY_SLIDER_MIN, end: DAY_SLIDER_MAX },
+  Morning: { start: 6 * 60 + 30, end: 12 * 60 },
+  Afternoon: { start: 12 * 60, end: 17 * 60 },
+  Evening: { start: 17 * 60, end: DAY_SLIDER_MAX },
+} as const;
+
+export const DURATION_PRESETS = [30, 60, 120, 180, 240];
+
 export interface Slot {
   date: DateOption;
   start: number; // minute of day

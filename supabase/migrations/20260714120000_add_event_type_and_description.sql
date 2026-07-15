@@ -7,3 +7,6 @@ DROP CONSTRAINT IF EXISTS events_event_type_check;
 
 ALTER TABLE public.events
 ADD CONSTRAINT events_event_type_check CHECK (event_type IN ('flexible', 'fixed'));
+
+ALTER TABLE public.events
+ADD COLUMN IF NOT EXISTS category text NULL;
