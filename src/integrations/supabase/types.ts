@@ -17,6 +17,7 @@ export type Database = {
       events: {
         Row: {
           allow_sleepover: boolean
+          category: string | null
           code: string
           created_at: string
           creator_name: string
@@ -34,6 +35,7 @@ export type Database = {
         }
         Insert: {
           allow_sleepover?: boolean
+          category?: string | null
           code: string
           created_at?: string
           creator_name: string
@@ -51,6 +53,7 @@ export type Database = {
         }
         Update: {
           allow_sleepover?: boolean
+          category?: string | null
           code?: string
           created_at?: string
           creator_name?: string
