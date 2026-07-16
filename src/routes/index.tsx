@@ -19,7 +19,10 @@ function Home() {
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <CalendarClock className="h-5 w-5" />
           </div>
-          <span className="font-display text-xl font-bold">Convene</span>
+          <div className="leading-tight">
+            <span className="font-display text-xl font-bold">Hourfold</span>
+            <p className="text-xs text-muted-foreground">Fold many schedules into one.</p>
+          </div>
         </div>
       </header>
 
@@ -88,7 +91,7 @@ function Home() {
           {[
             { n: "1", t: "Create", d: "Name it, pick candidate dates, choose a duration." },
             { n: "2", t: "Share", d: "Send the 6-character code to your friends." },
-            { n: "3", t: "Meet", d: "As people submit, Convene locks in the best time." },
+            { n: "3", t: "Meet", d: "As people submit, Hourfold locks in the best time." },
           ].map((s) => (
             <div key={s.n} className="rounded-2xl border bg-card/70 p-5 backdrop-blur">
               <div className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 font-display text-lg font-bold text-primary">
