@@ -1,4 +1,4 @@
-# Meetly
+# Convene
 
 A collaborative scheduling app for figuring out when a group can actually meet up - built with [TanStack Start](https://tanstack.com/start) and [Supabase](https://supabase.com).
 
