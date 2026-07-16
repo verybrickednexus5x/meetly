@@ -78,16 +78,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Convene - Plan hangouts with friends" },
+      { title: "Hourfold - Fold many schedules into one." },
       {
         name: "description",
         content:
-          "Create an event, share a code, and let Convene find the perfect time everyone is free.",
+          "Fold many schedules into one - create an event, share a code, and let Hourfold find the perfect time everyone is free.",
       },
-      { property: "og:title", content: "Convene - Plan hangouts with friends" },
+      { property: "og:title", content: "Hourfold - Fold many schedules into one." },
       {
         property: "og:description",
-        content: "Share a code, collect availability, get the best time to meet.",
+        content:
+          "Fold many schedules into one. Share a code, collect availability, get the best time to meet.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
