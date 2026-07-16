@@ -78,13 +78,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Meetly - Plan hangouts with friends" },
+      { title: "Convene - Plan hangouts with friends" },
       {
         name: "description",
         content:
-          "Create an event, share a code, and let Meetly find the perfect time everyone is free.",
+          "Create an event, share a code, and let Convene find the perfect time everyone is free.",
       },
-      { property: "og:title", content: "Meetly - Plan hangouts with friends" },
+      { property: "og:title", content: "Convene - Plan hangouts with friends" },
       {
         property: "og:description",
         content: "Share a code, collect availability, get the best time to meet.",

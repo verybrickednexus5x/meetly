@@ -80,7 +80,7 @@ function eventQuery(code: string) {
 export const Route = createFileRoute("/event/$code")({
   head: ({ params }) => ({
     meta: [
-      { title: `Event ${params.code} - Meetly` },
+      { title: `Event ${params.code} - Convene` },
       { name: "description", content: "Add your availability for this hangout." },
       { name: "robots", content: "noindex" },
     ],
@@ -319,7 +319,7 @@ function EventPage() {
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
             <CalendarClock className="h-5 w-5" />
           </div>
-          <span className="font-display text-xl font-bold">Meetly</span>
+          <span className="font-display text-xl font-bold">Convene</span>
         </Link>
         <Button asChild variant="ghost" size="sm">
           <Link to="/">
