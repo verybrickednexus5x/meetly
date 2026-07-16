@@ -39,7 +39,9 @@ bun run format     # prettier --write
 
 ### Environment variables
 
-Copy `.env.example` to `.env` and fill in your own Supabase project's values. `VITE_`-prefixed variables are bundled into the client and are expected to be public (Supabase's anon key is designed to be exposed - access is controlled by Row Level Security policies on the tables, not by keeping the key secret). `SUPABASE_SERVICE_ROLE_KEY` is server-only, bypasses Row Level Security entirely, and must never be committed or prefixed with `VITE_`.
+Copy `.env.example` to `.env` for **local development** and fill in your own Supabase project's values. `VITE_`-prefixed variables are bundled into the client and are expected to be public (Supabase's anon key is designed to be exposed - access is controlled by Row Level Security policies on the tables, not by keeping the key secret). `SUPABASE_SERVICE_ROLE_KEY` is server-only, bypasses Row Level Security entirely, and must never be committed or prefixed with `VITE_`.
+
+If this project is connected to **Lovable**, the hosted build does not read the repo's `.env` file - set the same values under **Cloud → Secrets** in the Lovable editor instead, so they're available to the live build without ever being committed to a (potentially public) git repo.
 
 ### Database
 
