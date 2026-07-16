@@ -39,7 +39,9 @@ bun run format     # prettier --write
 
 ### Environment variables
 
-Copy `.env.example` to `.env` and fill in your own Supabase project's values. `VITE_`-prefixed variables are bundled into the client and are expected to be public (Supabase's anon key is designed to be exposed - access is controlled by Row Level Security policies on the tables, not by keeping the key secret). `SUPABASE_SERVICE_ROLE_KEY` is server-only, bypasses Row Level Security entirely, and must never be committed or prefixed with `VITE_`.
+This project is connected to [Lovable](https://lovable.dev), which requires `.env` to be **committed to the repo** — Lovable's build reads `VITE_`-prefixed values (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`) directly from the committed `.env` file to bake them into the client bundle at build time; gitignoring it breaks Lovable's preview and published builds. This is safe: these are Supabase's anon/publishable key, explicitly designed to be public — access is controlled by Row Level Security policies on the tables, not by keeping the key secret. `.env.example` documents the same shape for anyone running the project outside of Lovable.
+
+Server-only secrets (no `VITE_` prefix, e.g. `SUPABASE_SERVICE_ROLE_KEY`, which bypasses Row Level Security entirely) must never go in `.env` or be committed — set those under **Cloud → Secrets** in the Lovable editor instead. Lovable's Secrets panel will reject any `VITE_`-prefixed name for exactly this reason (build-time browser values belong in `.env`, not Secrets).
 
 ### Database
 
