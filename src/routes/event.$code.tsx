@@ -15,6 +15,7 @@ import {
   minutesToLabel,
   durationToLabel,
   computeBestSlot,
+  generateToken,
   type Slot,
 } from "@/lib/hangout";
 
@@ -26,7 +27,6 @@ type EventRow = {
   category?: string | null;
   event_type?: string | null;
   creator_name: string;
-  creator_token: string;
   duration_minutes: number;
   date_options: string[];
   day_start_minute: number;
@@ -149,21 +149,31 @@ function EventPage() {
 
   const [creatorToken, setCreatorToken] = useState<string | null>(null);
   const [myName, setMyName] = useState("");
+  const [myResponseRef, setMyResponseRef] = useState<{ id: string; editToken: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     try {
       setCreatorToken(localStorage.getItem(`meetly:creator:${upper}`));
       setMyName(localStorage.getItem(`meetly:name:${upper}`) ?? "");
+      const stored = localStorage.getItem(`hourfold:response:${upper}`);
+      setMyResponseRef(stored ? (JSON.parse(stored) as { id: string; editToken: string }) : null);
     } catch {
       void 0;
     }
   }, [upper]);
 
-  const isCreator = creatorToken === event.creator_token;
+  // creator_token is never returned by the API (see migration) - presence of
+  // a locally stored token is enough for this cosmetic "you created this"
+  // indicator, since only this browser could have received it at creation.
+  const isCreator = !!creatorToken;
 
   const myResponse = useMemo(
-    () => responses.find((r) => r.name.toLowerCase() === myName.trim().toLowerCase()),
-    [responses, myName],
+    () =>
+      (myResponseRef && responses.find((r) => r.id === myResponseRef.id)) ||
+      responses.find((r) => r.name.toLowerCase() === myName.trim().toLowerCase()),
+    [responses, myName, myResponseRef],
   );
   const durationOptions = useMemo(() => normalizeDurationOptions(event), [event]);
   const locationSuggestions = useMemo(() => normalizeLocationSuggestions(event), [event]);
@@ -233,16 +243,43 @@ function EventPage() {
     };
     let error;
     if (myResponse) {
-      ({ error } = await supabase
-        .from("responses")
-        .update({
-          availability: payload.availability,
-          preferred_duration: payload.preferred_duration,
-          preferred_location: payload.preferred_location,
-        })
-        .eq("id", myResponse.id));
+      if (!myResponseRef || myResponseRef.id !== myResponse.id) {
+        toast.error(
+          "This looks like an existing response, but this browser can't verify it's yours (maybe it was submitted from a different device, or before an update). Use a different name to submit as a new response.",
+        );
+        return;
+      }
+      const { data: updated, error: updateError } = await supabase.rpc("update_response", {
+        p_response_id: myResponse.id,
+        p_edit_token: myResponseRef.editToken,
+        p_availability: payload.availability,
+        p_preferred_duration: payload.preferred_duration,
+        p_preferred_location: payload.preferred_location,
+      });
+      error = updateError;
+      if (!error && !updated) {
+        toast.error("Could not verify this is your response. Try again or use a different name.");
+        return;
+      }
     } else {
-      ({ error } = await supabase.from("responses").insert(payload));
+      const editToken = generateToken();
+      const { data: inserted, error: insertError } = await supabase
+        .from("responses")
+        .insert({ ...payload, edit_token: editToken })
+        .select("id")
+        .single();
+      error = insertError;
+      if (!error && inserted) {
+        try {
+          localStorage.setItem(
+            `hourfold:response:${upper}`,
+            JSON.stringify({ id: inserted.id, editToken }),
+          );
+          setMyResponseRef({ id: inserted.id, editToken });
+        } catch {
+          void 0;
+        }
+      }
     }
     if (error) {
       toast.error("Could not save. Try again.");

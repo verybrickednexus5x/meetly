@@ -247,17 +247,32 @@ function Create() {
         eventType === "fixed"
           ? [{ date: fixedDate, start: fixedStartMin as number, end: fixedEndMin as number }]
           : myWindows;
+      const responseEditToken = generateToken();
 
-      const { error: responseError } = await supabase.from("responses").insert({
-        event_id: eventRow.id,
-        name: name.trim().slice(0, 50),
-        availability: creatorAvailability as unknown as never,
-        preferred_duration: eventType === "fixed" ? durationMinutes : null,
-      });
-      if (responseError) {
+      const { data: responseRow, error: responseError } = await supabase
+        .from("responses")
+        .insert({
+          event_id: eventRow.id,
+          name: name.trim().slice(0, 50),
+          availability: creatorAvailability as unknown as never,
+          preferred_duration: eventType === "fixed" ? durationMinutes : null,
+          edit_token: responseEditToken,
+        })
+        .select("id")
+        .single();
+      if (responseError || !responseRow) {
         toast.error(
           "Event created, but your own availability couldn't be saved. Add it from the event page.",
         );
+      } else {
+        try {
+          localStorage.setItem(
+            `hourfold:response:${code}`,
+            JSON.stringify({ id: responseRow.id, editToken: responseEditToken }),
+          );
+        } catch {
+          void 0;
+        }
       }
     } catch (err) {
       console.error("Failed to create event:", err);

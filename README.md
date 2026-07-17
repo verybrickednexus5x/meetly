@@ -47,6 +47,15 @@ Server-only secrets (no `VITE_` prefix, e.g. `SUPABASE_SERVICE_ROLE_KEY`, which 
 
 Schema and RLS policies live in `supabase/migrations/`. If you're managing this project through [Lovable](https://lovable.dev), migrations added outside of Lovable's own chat flow (e.g. merged in from a PR) aren't applied to the live database automatically - either ask Lovable to run the pending migration, or run the SQL directly from the Supabase SQL editor (linked from Lovable's Cloud tab).
 
+### Security model
+
+There's no user auth - anyone with an event's share code can view and respond to it, by design. Ownership (who created an event, who owns a given response) is proven by a random token generated client-side and kept in `localStorage`, never by login. Two things make this actually hold up rather than just being obscurity:
+
+- `creator_token` and `edit_token` are hidden from the API entirely via column-level `GRANT`/`REVOKE` (not just omitted from queries) - even a direct REST call against the table can't read them back, only compare against them.
+- Updating a response goes through the `update_response` Postgres function (`SECURITY DEFINER`), which checks `edit_token` server-side before writing anything. There's no direct table `UPDATE` path left for `responses`, so this can't be bypassed by a client simply choosing not to send a filter.
+
+Any future feature that gates an action behind a token (e.g. a host edit/delete code) should follow this same pattern - hide the token column, enforce the check inside a function, not just in application code.
+
 ## Project structure
 
 ```

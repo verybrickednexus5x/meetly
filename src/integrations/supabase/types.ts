@@ -76,6 +76,7 @@ export type Database = {
           availability: Json
           can_sleepover: boolean
           created_at: string
+          edit_token: string
           event_id: string
           id: string
           leave_by_minute: number | null
@@ -87,6 +88,7 @@ export type Database = {
           availability?: Json
           can_sleepover?: boolean
           created_at?: string
+          edit_token?: string
           event_id: string
           id?: string
           leave_by_minute?: number | null
@@ -98,6 +100,7 @@ export type Database = {
           availability?: Json
           can_sleepover?: boolean
           created_at?: string
+          edit_token?: string
           event_id?: string
           id?: string
           leave_by_minute?: number | null
@@ -120,7 +123,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_response: {
+        Args: {
+          p_response_id: string
+          p_edit_token: string
+          p_availability: Json
+          p_preferred_duration: number | null
+          p_preferred_location: string | null
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
